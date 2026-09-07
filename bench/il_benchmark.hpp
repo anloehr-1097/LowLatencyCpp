@@ -1,8 +1,13 @@
 #pragma once
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
+#include <cstddef>
 #include <cstdint>
+#include <iostream>
 #include <ranges>
+#include <stdexcept>
 #include <tuple>
 #include <type_traits>
 #include <utility>
@@ -181,6 +186,26 @@ std::vector<uint64_t> benchmark_samples(F &&f, Args &&...args) {
     ticks.push_back(t);
   }
   return ticks;
+}
+
+// ---------------------------------------------------------------------------
+// Calculate p<N> (nearest-rank, 1 <= N <= 100) of runtimes collected through
+// benchmark_samples. Sorts vec in place. Returns 0 on insufficient samples
+// (with an error on stderr).
+// ---------------------------------------------------------------------------
+template <std::size_t N> auto p(std::vector<uint64_t> &vec) {
+  static_assert(N >= 1 && N <= 100, "p<N> requires 1 <= N <= 100");
+  if (vec.size() < N) {
+    std::cerr << "Cannot calculate p<" << N
+              << ">. Increase number of samples. Current "
+                 "number of samples: "
+              << vec.size() << std::endl;
+    return uint64_t{0};
+  }
+  std::sort(vec.begin(), vec.end());
+
+  auto index = static_cast<uint64_t>(std::ceil(vec.size() * N / 100.0)) - 1;
+  return vec.at(index);
 }
 
 // ---------------------------------------------------------------------------

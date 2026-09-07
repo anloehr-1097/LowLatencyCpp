@@ -29,6 +29,7 @@ int main() {
   auto min_it = std::ranges::min(samples);
   auto avg = std::accumulate(samples.begin(), samples.end(), uint64_t{0}) /
              samples.size();
+  auto p99 = bench::p<99>(samples);
 
   // 4. Wallclock time for N invocations
   auto wc_func_N = [total_runs = total_runs, func = func, &a = a, &b = b]() {
@@ -50,6 +51,7 @@ int main() {
             << "total (1000 reps): " << total << "\n"
             << "avg from total (ns/rep): " << avg_benchmark_N << "\n"
             << "samples min: " << min_it << " avg: " << avg << "\n"
+            << "samples p99: " << p99 << "\n"
             << "Wallclock ns/rep: " << wc_ns_per_rep << "\n";
   return 0;
 }
