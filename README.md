@@ -38,9 +38,11 @@ Times **N** iterations as a **single aggregate** — one timer pair around the w
 - **Use case:** sub-tick work (the default choice for fast functions). The timer overhead amortizes to ~0 per iteration and the work accumulates above one tick, giving a meaningful per-rep cost = `total / N`.
 - **Requirement:** `f` must return non-void so the sink has something to pin.
 
-### `benchmark_samples<N>(F&& f, Args&&... args)` → `std::vector<uint64_t>`
+### `benchmark_samples<N, M = 0>(F&& f, Args&&... args)` → `std::vector<uint64_t>`
 
 Reuses `il_benchmark` per iteration and collects the N tick counts. `reserve(N)` upfront; `push_back` runs strictly after the stop timer read so vector bookkeeping never enters the timed window.
+
+- **Warmup:** the optional second template argument `M` runs M untimed warmup iterations before sampling (primes caches / branch predictors / frequency). Since args are captured by reference, warmup may mutate stateful `f` — timed samples see post-warmup state.
 
 - **Use case:** statistical evaluation (min / median / variance) of workloads where each call **exceeds the tick period**.
 - **Caveat:** not adequate for sub-tick `f` — per-sample timer overhead swamps the signal. Use `benchmark_N` instead.

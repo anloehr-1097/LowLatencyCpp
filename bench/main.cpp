@@ -31,7 +31,17 @@ int main() {
              samples.size();
   auto p99 = bench::p<99>(samples);
 
-  // 4. Wallclock time for N invocations
+  // 4. N invocations with M warmup iterations
+  constexpr auto warmup_iters = 10UL;
+  auto samples_wu =
+      bench::benchmark_samples<total_runs, warmup_iters>(func, a, b);
+  auto min_it_wu = std::ranges::min(samples_wu);
+  auto avg_wu =
+      std::accumulate(samples_wu.begin(), samples_wu.end(), uint64_t{0}) /
+      samples_wu.size();
+  auto p99_wu = bench::p<99>(samples_wu);
+
+  // 5. Wallclock time for N invocations
   auto wc_func_N = [total_runs = total_runs, func = func, &a = a, &b = b]() {
     for ([[maybe_unused]] auto i :
          std::views::iota(0uz) | std::views::take(total_runs)) {
@@ -52,6 +62,9 @@ int main() {
             << "avg from total (ns/rep): " << avg_benchmark_N << "\n"
             << "samples min: " << min_it << " avg: " << avg << "\n"
             << "samples p99: " << p99 << "\n"
+            << "samples min warmup: " << min_it_wu << " avg warmup: " << avg_wu
+            << "\n"
+            << "samples p99 warmup: " << p99_wu << "\n"
             << "Wallclock ns/rep: " << wc_ns_per_rep << "\n";
   return 0;
 }

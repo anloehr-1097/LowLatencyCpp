@@ -166,11 +166,16 @@ uint64_t benchmark_N(F &&f, Args &&...args) {
 // Collect N per-iteration tick samples by reusing il_benchmark. reserve(N)
 // upfront; push_back runs strictly after the stop timer read so vector
 // bookkeeping never enters the timed window.
+// Optional M warmup iterations run upfront and are not returned. Warmup calls
+// f through the same by-reference arg tuple, so stateful f is observed in
+// post-warmup state by the timed samples (intended: primes caches, branch
+// predictors, frequency).
 //
 // Note: not adequate for sub-tick f — per-sample timer overhead swamps the
 // signal. Use benchmark_N instead.
 // ---------------------------------------------------------------------------
-template <std::size_t N, typename F, typename... Args>
+template <std::size_t N, std::size_t M = std::size_t{0}, typename F,
+          typename... Args>
 std::vector<uint64_t> benchmark_samples(F &&f, Args &&...args) {
   std::vector<uint64_t> ticks;
   ticks.reserve(N);
@@ -181,6 +186,11 @@ std::vector<uint64_t> benchmark_samples(F &&f, Args &&...args) {
   };
   static_assert(!std::is_void_v<decltype(run())>,
                 "benchmark_samples requires f to return non-void");
+
+  for ([[maybe_unused]] auto i : std::views::iota(0uz) | std::views::take(M)) {
+    [[maybe_unused]] auto [_, t] = il_benchmark(run);
+  }
+
   for ([[maybe_unused]] auto i : std::views::iota(0uz) | std::views::take(N)) {
     auto [_, t] = il_benchmark(run);
     ticks.push_back(t);
