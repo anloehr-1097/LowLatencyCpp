@@ -5,7 +5,9 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <iostream>
+#include <numeric>
 #include <ranges>
 #include <stdexcept>
 #include <tuple>
@@ -118,12 +120,16 @@ template <typename T> BENCH_ALWAYS_INLINE void keep(T &v) {
 // Benchmark a single invocation of f(args...). Perfect-forwards args, sinks the
 // result. Returns {result, elapsed ticks}.
 //
+// Requirement: f must return non-void (the sink needs something to pin).
+//
 // Note: unreliable for sub-tick work — per-sample mrs/isb overhead dominates.
 // Use benchmark_N for fast functions.
 // ---------------------------------------------------------------------------
 template <typename F, typename... Args>
 std::pair<std::invoke_result_t<F &, Args...>, uint64_t>
 il_benchmark(F &&f, Args &&...args) {
+  static_assert(!std::is_void_v<std::invoke_result_t<F &, Args...>>,
+                "il_benchmark requires f to return non-void");
   uint64_t start_val = timer_start();
 
   auto res = f(std::forward<Args>(args)...);
@@ -199,6 +205,20 @@ std::vector<uint64_t> benchmark_samples(F &&f, Args &&...args) {
 }
 
 // ---------------------------------------------------------------------------
+// Portable wallclock timing using std::chrono::steady_clock. Independent of
+// the CPU virtual counter. Sinks the result. For sub-µs work, wrap an N-rep
+// loop and divide by N to amortize now() overhead.
+// ---------------------------------------------------------------------------
+template <typename F, typename... Args>
+auto wallclock_spend(F &&f, Args &&...args) {
+  auto begin{std::chrono::steady_clock::now()};
+  auto res = f(std::forward<Args>(args)...);
+  keep(res);
+  auto end{std::chrono::steady_clock::now()};
+  return std::chrono::duration<double>(end - begin);
+}
+
+// ---------------------------------------------------------------------------
 // Calculate p<N> (nearest-rank, 1 <= N <= 100) of runtimes collected through
 // benchmark_samples. Sorts vec in place. Returns 0 on insufficient samples
 // (with an error on stderr).
@@ -219,17 +239,28 @@ template <std::size_t N> auto p(std::vector<uint64_t> &vec) {
 }
 
 // ---------------------------------------------------------------------------
-// Portable wallclock timing using std::chrono::steady_clock. Independent of
-// the CPU virtual counter. Sinks the result. For sub-µs work, wrap an N-rep
-// loop and divide by N to amortize now() overhead.
+// Calculate the mean and sample standard deviation (n-1 denominator) of
+// runtimes collected through benchmark_samples. Pure: does not modify vec and
+// writes nothing to stdout. Returns {0, 0} on insufficient samples (with an
+// error on stderr) — sample variance needs at least 2 samples.
 // ---------------------------------------------------------------------------
-template <typename F, typename... Args>
-auto wallclock_spend(F &&f, Args &&...args) {
-  auto begin{std::chrono::steady_clock::now()};
-  auto res = f(std::forward<Args>(args)...);
-  keep(res);
-  auto end{std::chrono::steady_clock::now()};
-  return std::chrono::duration<double>(end - begin);
+inline auto standard_dev(const std::vector<uint64_t> &vec)
+    -> std::pair<double, double> {
+  if (vec.size() < 2) {
+    std::cerr << "Cannot calculate standard deviation. Need at least 2 "
+                 "samples. Current number of samples: "
+              << vec.size() << std::endl;
+    return {0.0, 0.0};
+  }
+  const auto avg =
+      std::accumulate(vec.begin(), vec.end(), 0.0, std::plus()) / vec.size();
+  const auto variance =
+      std::accumulate(vec.begin(), vec.end(), 0.0,
+                      [avg = avg](const auto &a, const auto &b) {
+                        return a + (b - avg) * (b - avg);
+                      }) /
+      static_cast<double>(vec.size() - 1);
+  return {avg, std::sqrt(variance)};
 }
 
 } // namespace bench

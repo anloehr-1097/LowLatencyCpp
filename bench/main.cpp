@@ -27,9 +27,8 @@ int main() {
   // results
   auto samples = bench::benchmark_samples<total_runs>(func, a, b);
   auto min_it = std::ranges::min(samples);
-  auto avg = std::accumulate(samples.begin(), samples.end(), uint64_t{0}) /
-             samples.size();
   auto p99 = bench::p<99>(samples);
+  auto [avg, stddev] = bench::standard_dev(samples);
 
   // 4. N invocations with M warmup iterations
   constexpr auto warmup_iters = 10UL;
@@ -65,6 +64,7 @@ int main() {
             << "samples min warmup: " << min_it_wu << " avg warmup: " << avg_wu
             << "\n"
             << "samples p99 warmup: " << p99_wu << "\n"
+            << "samples stddev: " << stddev << "\n"
             << "Wallclock ns/rep: " << wc_ns_per_rep << "\n";
   return 0;
 }
