@@ -220,8 +220,8 @@ int main() {
     return queue.num_elements();
   };
 
-  auto puret = std::async(push_fun);
-  auto poret = std::async(pop_fun);
+  auto puret = std::async(std::launch::async, push_fun);
+  auto poret = std::async(std::launch::async, pop_fun);
   auto ne_push = puret.get();
   auto ne_pop = poret.get();
   std::cout << "Push num elements: " << ne_push

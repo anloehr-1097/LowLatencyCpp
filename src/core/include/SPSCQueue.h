@@ -1,9 +1,7 @@
-/**`core/spsc_queue.h`** — a templated, fixed-capacity, lock-free
+/**`core/SPSCQueue.h`** — a templated, fixed-capacity, lock-free
    single-producer single-consumer queue:
-   - Power-of-two capacity (compile-time or runtime, enforced with
-   `static_assert` or runtime check)
-   - `try_push(const T&) -> bool` and `try_pop(T&) -> bool` — non-blocking
-   - `push(const T&)` — spins until space is available (optional, with backoff)
+   - Power-of-two capacity, enforced with `static_assert`
+   - `push(const T&)` / `pop(T&)` — spin until space/data is available
    - Head and tail indices on separate cache lines (padding to avoid false
    sharing)
    - Memory ordering: producer uses `std::memory_order_release` on tail update;
@@ -11,6 +9,9 @@
    `seq_cst` anywhere.
    - Storage is a flat array — no heap allocation per element
    */
+
+#ifndef SPSC_QUEUE_H
+#define SPSC_QUEUE_H
 
 #if defined(__aarch64__) || defined(__arm__)
 #include <arm_acle.h>
@@ -47,9 +48,8 @@ template <typename T, std::size_t N> class SPSCQueue {
   };
   struct alignas(CacheLineSize) ProducerVars {
     std::atomic<std::size_t> tail{0}; // push loc
-    alignas(CacheLineSize) std::size_t cached_head{
-        0}; // last-known consumer head
-    alignas(CacheLineSize) std::size_t free{N};
+    std::size_t cached_head{0};       // last-known consumer head
+    std::size_t free{N};
   };
   ProducerVars p;
   ConsumerVars c;
@@ -64,3 +64,5 @@ public:
   void pop(T &);
   std::size_t num_elements();
 };
+
+#endif // SPSC_QUEUE_H
