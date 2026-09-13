@@ -27,7 +27,7 @@ add_executable(bench bench/main.cpp)
 target_link_libraries(bench PRIVATE il_benchmark)
 
 # --- core executable ------------------------------------------------------
-add_executable(core src/core/main.cpp src/core/Particle.cpp)
+add_executable(core src/core/main.cpp src/core/Particle.cpp src/core/SPSCQueue.cpp)
 target_include_directories(core PRIVATE src/core)
 target_link_libraries(core PRIVATE il_benchmark)
 

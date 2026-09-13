@@ -1,10 +1,13 @@
 #include "il_benchmark.hpp"
 #include "include/Particle.h"
+#include "include/SPSCQueue.h"
 
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <future>
 #include <iostream>
+#include <numeric>
 #include <random>
 #include <tuple>
 #include <vector>
@@ -201,5 +204,27 @@ int main() {
   std::cout << "update_particle_soa: " << soa_ticks_xlarge
             << " ticks (size=" << soa_res_xlarge << ")\n";
 
+  auto queue = SPSCQueue<float, 1024>{};
+  auto push_fun = [&queue = queue]() -> std::size_t {
+    for (const float i : std::ranges::iota_view(0, NUM_PARTICLES_MEDIUM)) {
+      queue.push(i);
+    }
+    return queue.num_elements();
+  };
+  auto pop_fun = [&queue = queue]() -> std::size_t {
+    float f;
+    for ([[maybe_unused]] const auto i :
+         std::ranges::iota_view(0, NUM_PARTICLES_MEDIUM)) {
+      queue.pop(f);
+    }
+    return queue.num_elements();
+  };
+
+  auto puret = std::async(push_fun);
+  auto poret = std::async(pop_fun);
+  auto ne_push = puret.get();
+  auto ne_pop = poret.get();
+  std::cout << "Push num elements: " << ne_push
+            << "\tPop num elements: " << ne_pop << std::endl;
   return 0;
 }
