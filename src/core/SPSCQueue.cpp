@@ -5,11 +5,12 @@
 /*
  * Comments for blog: We have a *single* consumer, *single* producer queue.
  * At most 2 threads access the queue, we need these 2 threads to be
- * synchronized. We only need to synchronize the head and the tail. This is
- * related to the benchmark notes I took
+ * synchronized. We only need to synchronize the head and the tail.
  */
 
-template <typename T, std::size_t N> void SPSCQueue<T, N>::push(const T &item) {
+template <typename T, std::size_t N>
+    requires PowerOfTwo<N>
+void SPSCQueue<T, N>::push(const T &item) {
   // stalling push
   /*
    * Standard pattern: passing a const reference, since it is copy constructed
@@ -28,13 +29,15 @@ template <typename T, std::size_t N> void SPSCQueue<T, N>::push(const T &item) {
     break;
   }
 
-  data[ltail % capacity] = item;
+  data[ltail & (capacity - 1)] = item;
   ++ltail;
   p.tail.store(ltail, std::memory_order_release);
   --p.free;
 };
 
-template <typename T, std::size_t N> void SPSCQueue<T, N>::pop(T &val) {
+template <typename T, std::size_t N>
+    requires PowerOfTwo<N>
+void SPSCQueue<T, N>::pop(T &val) {
   auto lhead = c.head.load(std::memory_order_relaxed);
   while (true) {
     if (c.consumable == 0) {
@@ -47,13 +50,14 @@ template <typename T, std::size_t N> void SPSCQueue<T, N>::pop(T &val) {
     }
     break;
   }
-  val = data[lhead % capacity];
+  val = data[lhead & (capacity - 1)];
   ++lhead;
   c.head.store(lhead, std::memory_order_release);
   --c.consumable;
 };
 
 template <typename T, std::size_t N>
+    requires PowerOfTwo<N>
 std::size_t SPSCQueue<T, N>::num_elements() {
   return p.tail.load(std::memory_order_relaxed) -
          c.head.load(std::memory_order_relaxed);

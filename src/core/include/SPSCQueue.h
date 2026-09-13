@@ -37,7 +37,12 @@
 constexpr auto CacheLineSize =
     std::max(std::hardware_constructive_interference_size, std::size_t{128});
 
-template <typename T, std::size_t N> class SPSCQueue {
+template <std::size_t N>
+concept PowerOfTwo = requires { (N > 0) && !(N & (N - 1)); };
+
+template <typename T, std::size_t N>
+  requires PowerOfTwo<N>
+class SPSCQueue {
   static constexpr std::size_t capacity{N};
 
   std::array<T, N> data{};
@@ -55,11 +60,7 @@ template <typename T, std::size_t N> class SPSCQueue {
   ConsumerVars c;
 
 public:
-  SPSCQueue() {
-    // power of 2 <=> excatly 1 bit set
-    static_assert([](std::size_t n) { return (n > 0) && !(n & (n - 1)); }(N),
-                  "Queue size N not a power of 2.");
-  }
+  SPSCQueue() = default;
   void push(const T &);
   void pop(T &);
   std::size_t num_elements();
