@@ -113,7 +113,14 @@ inline uint64_t timer_freq() {
 // blocks hoisting of surrounding loads/stores.
 // ---------------------------------------------------------------------------
 template <typename T> BENCH_ALWAYS_INLINE void keep(T &v) {
-  asm volatile("" : "+r"(const_cast<T &>(v)) : : "memory");
+  if constexpr (std::is_scalar_v<T>) {
+    asm volatile("" : "+r"(const_cast<T &>(v)) : : "memory");
+  } else {
+    // Non-register-size types: input-only operand instead of a tied register
+    // constraint (clang can't handle tied indirect register inputs).
+    // Still forces materialization, defeating DCE; "memory" blocks reordering.
+    asm volatile("" : : "g"(const_cast<T &>(v)) : "memory");
+  }
 }
 
 // ---------------------------------------------------------------------------

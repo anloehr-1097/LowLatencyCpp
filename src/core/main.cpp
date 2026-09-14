@@ -284,11 +284,20 @@ int main() {
 
   auto puret = std::async(std::launch::async, push_fun);
   auto poret = std::async(std::launch::async, pop_fun);
-  auto ne_push = puret.get();
-  auto ne_pop = poret.get();
-  std::cout << "Push num elements: " << ne_push
-            << "\tPop num elements: " << ne_pop << std::endl;
   queue_correctness_test();
   queue_correctness_test_concurrent();
+
+  auto place_holder = 0;
+  auto [res, meas_time] = bench::il_benchmark(
+      [&puret, &poret]([[maybe_unused]] int _placeholder) {
+        auto ne_push = puret.get();
+        auto ne_pop = poret.get();
+        return std::make_tuple(ne_push, ne_pop);
+      },
+      place_holder);
+
+  std::cout << "Push num elements: " << std::get<0>(res)
+            << "\tPop num elements: " << std::get<1>(res) << std::endl;
+  std::cout << "Time spent: " << meas_time << std::endl;
   return 0;
 }
