@@ -9,7 +9,7 @@
  */
 
 template <typename T, std::size_t N>
-    requires PowerOfTwo<N>
+  requires PowerOfTwo<N>
 void SPSCQueue<T, N>::push(const T &item) {
   // stalling push
   /*
@@ -36,7 +36,7 @@ void SPSCQueue<T, N>::push(const T &item) {
 };
 
 template <typename T, std::size_t N>
-    requires PowerOfTwo<N>
+  requires PowerOfTwo<N>
 void SPSCQueue<T, N>::pop(T &val) {
   auto lhead = c.head.load(std::memory_order_relaxed);
   while (true) {
@@ -57,10 +57,10 @@ void SPSCQueue<T, N>::pop(T &val) {
 };
 
 template <typename T, std::size_t N>
-    requires PowerOfTwo<N>
+  requires PowerOfTwo<N>
 std::size_t SPSCQueue<T, N>::num_elements() {
-  return p.tail.load(std::memory_order_relaxed) -
-         c.head.load(std::memory_order_relaxed);
+  return p.tail.load(std::memory_order_seq_cst) -
+         c.head.load(std::memory_order_seq_cst);
 };
 
 template class SPSCQueue<float, 1024>;

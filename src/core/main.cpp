@@ -3,12 +3,14 @@
 #include "include/SPSCQueue.h"
 
 #include <algorithm>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <future>
 #include <iostream>
 #include <numeric>
 #include <random>
+#include <stdexcept>
 #include <tuple>
 #include <vector>
 
@@ -92,6 +94,66 @@ SoaParticle make_particles_soa_from_aos(const std::vector<Particle> &aos) {
     soa.circumference[i] = p.circumference;
   }
   return soa;
+}
+
+void queue_correctness_test() {
+  constexpr std::size_t kCap = 1024;
+  auto queue = SPSCQueue<float, kCap>{};
+  auto push_fun = [&queue = queue]() -> std::size_t {
+    for (const float i : std::ranges::iota_view(std::size_t{0}, kCap)) {
+      queue.push(i);
+    }
+    return queue.num_elements();
+  };
+
+  auto puret = std::async(std::launch::async, push_fun);
+  auto ne_push = puret.get();
+  std::cout << "Push num elements: " << ne_push << std::endl;
+
+  auto pop_fun = [&queue = queue]() -> std::size_t {
+    float f;
+    for (const auto i : std::ranges::iota_view(std::size_t{0}, kCap)) {
+      queue.pop(f);
+      if (static_cast<float>(i) != f) {
+        throw std::runtime_error("values don't match");
+      }
+    }
+    return queue.num_elements();
+  };
+
+  auto poret = std::async(std::launch::async, pop_fun);
+  auto ne_pop = poret.get();
+  std::cout << "Pop num elements: " << ne_pop << std::endl;
+}
+
+void queue_correctness_test_concurrent() {
+  constexpr std::size_t kCap = 1024;
+  auto queue = SPSCQueue<float, kCap>{};
+  auto push_fun = [&queue = queue]() -> std::size_t {
+    for (const float i : std::ranges::iota_view(std::size_t{0}, kCap)) {
+      queue.push(i);
+    }
+    return queue.num_elements();
+  };
+
+  auto pop_fun = [&queue = queue]() -> std::size_t {
+    float f;
+    for (const auto i : std::ranges::iota_view(std::size_t{0}, kCap)) {
+      queue.pop(f);
+      if (static_cast<float>(i) != f) {
+        throw std::runtime_error("values don't match");
+      }
+    }
+    return queue.num_elements();
+  };
+
+  std::cout << "Concurrent correctness test" << std::endl;
+  auto puret = std::async(std::launch::async, push_fun);
+  auto poret = std::async(std::launch::async, pop_fun);
+  auto ne_push = puret.get();
+  auto ne_pop = poret.get();
+  std::cout << "Push num elements: " << ne_push << std::endl;
+  std::cout << "Pop num elements: " << ne_pop << std::endl;
 }
 
 } // namespace
@@ -226,5 +288,7 @@ int main() {
   auto ne_pop = poret.get();
   std::cout << "Push num elements: " << ne_push
             << "\tPop num elements: " << ne_pop << std::endl;
+  queue_correctness_test();
+  queue_correctness_test_concurrent();
   return 0;
 }
