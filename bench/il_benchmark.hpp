@@ -111,14 +111,14 @@ inline uint64_t timer_freq() {
 // it as read+written, defeating constant folding and dead-code elimination.
 // The empty asm body emits no instruction; the "memory" clobber additionally
 // blocks hoisting of surrounding loads/stores.
+// Non-register-size types: input-only operand instead of a tied register
+// constraint (clang can't handle tied indirect register inputs).
+// Still forces materialization, defeating DCE.
 // ---------------------------------------------------------------------------
 template <typename T> BENCH_ALWAYS_INLINE void keep(T &v) {
   if constexpr (std::is_scalar_v<T>) {
     asm volatile("" : "+r"(const_cast<T &>(v)) : : "memory");
   } else {
-    // Non-register-size types: input-only operand instead of a tied register
-    // constraint (clang can't handle tied indirect register inputs).
-    // Still forces materialization, defeating DCE; "memory" blocks reordering.
     asm volatile("" : : "g"(const_cast<T &>(v)) : "memory");
   }
 }
