@@ -52,7 +52,8 @@ if(LLCM_BUILD_TESTS)
 
   enable_testing()
 
-  foreach(test_name particle_tests spsc_queue_tests arena_tests pool_tests)
+  foreach(test_name particle_tests spsc_queue_tests arena_tests pool_tests 
+          arena_allocator_test)
     add_executable(${test_name} src/core/tests/${test_name}.cpp)
     target_link_libraries(${test_name} PRIVATE core GTest::gtest_main)
     add_test(NAME ${test_name} COMMAND ${test_name})
