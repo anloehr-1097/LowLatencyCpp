@@ -1,4 +1,5 @@
 #include "il_benchmark.hpp"
+#include "include/ArenaAllocator.h"
 #include "include/Particle.h"
 #include "include/SPSCQueue.h"
 
@@ -10,6 +11,7 @@
 #include <iostream>
 #include <numeric>
 #include <random>
+#include <ranges>
 #include <stdexcept>
 #include <tuple>
 #include <vector>
@@ -158,6 +160,148 @@ void queue_correctness_test_concurrent() {
 
 } // namespace
 
+// Spin for ~200ms before measuring. Without this the benchmark window runs
+// at an unknown clock state (frequency ramping / DVFS), which can distort
+// sub-100ns comparisons by 2x.
+void spin_warmup() {
+  volatile std::uint64_t sink = 0;
+  const auto freq = bench::timer_freq();
+  const auto t0 = bench::timer_start();
+  while (bench::timer_start() - t0 < freq / 5) {
+    ++sink;
+  }
+}
+
+// Creation cost of a 1000-element vector: std::allocator vs ArenaAllocator.
+// The vector (and with it the allocator's Arena) is constructed inside the
+// timed callable: the Arena cannot be reused across iterations because
+// deallocate is a no-op and the bump pointer never rewinds until reset().
+// The data pointer is returned so the allocation cannot be dead-code elided.
+void bench_arena_allocator() {
+  constexpr std::size_t kElems = 1000;
+  constexpr std::size_t kIters = 10'000;
+  spin_warmup();
+
+  const auto std_ticks = bench::benchmark_N<kIters>([] {
+    std::vector<int> v(kElems);
+    auto *p = v.data();
+    bench::keep(p); // sink: allocation result must be materialized
+    return v.size();
+  });
+
+  const auto arena_ticks = bench::benchmark_N<kIters>([] {
+    // Arena holds exactly kElems ints: vector(kElems) performs a single
+    // allocate(kElems), which fits the Arena exactly.
+    std::vector<int, ArenaAllocator<int, kElems>> v(kElems);
+    auto *p = v.data();
+    bench::keep(p);
+    return v.size();
+  });
+
+  const auto freq = static_cast<double>(bench::timer_freq());
+  const auto per_op_ns = [freq](std::uint64_t ticks) {
+    return static_cast<double>(ticks) / kIters / freq * 1e9;
+  };
+
+  std::cout << "create vector<int> x" << kElems << " (" << kIters
+            << " iterations)\n"
+            << "  std::allocator: " << std_ticks << " ticks ("
+            << per_op_ns(std_ticks) << " ns/creation)\n"
+            << "  ArenaAllocator:  " << arena_ticks << " ticks ("
+            << per_op_ns(arena_ticks) << " ns/creation)\n";
+}
+
+// Realistic arena use case: the Arena is created once at program start and
+// reused across the hot path. Each iteration is one "frame": construct a
+// vector from the persistent allocator, fill it, destroy it (deallocate is a
+// no-op), then rewind the Arena with reset(). The hot path performs no heap
+// allocation; the only per-iteration costs are the bump allocation, the
+// shared_ptr refcount traffic of the allocator copy, and the rewind.
+void bench_arena_allocator_hotpath() {
+  constexpr std::size_t kElems = 1000;
+  constexpr std::size_t kIters = 10'000;
+  spin_warmup();
+
+  // Created once, outside the timed hot path.
+  ArenaAllocator<int, kElems> alloc;
+
+  const auto std_ticks = bench::benchmark_N<kIters>([] {
+    std::vector<int> v(kElems);
+    auto *p = v.data();
+    bench::keep(p);
+    return v.size();
+  });
+
+  const auto arena_ticks = bench::benchmark_N<kIters>([&alloc] {
+    std::vector<int, ArenaAllocator<int, kElems>> v(alloc);
+    v.resize(kElems);
+    auto *p = v.data();
+    bench::keep(p);
+    auto size = v.size();
+    alloc.reset(); // rewind for the next iteration
+    return size;
+  });
+
+  const auto freq = static_cast<double>(bench::timer_freq());
+  const auto per_op_ns = [freq](std::uint64_t ticks) {
+    return static_cast<double>(ticks) / kIters / freq * 1e9;
+  };
+
+  std::cout << "hotpath vector<int> x" << kElems << " (" << kIters
+            << " iterations, arena created once)\n"
+            << "  std::allocator: " << std_ticks << " ticks ("
+            << per_op_ns(std_ticks) << " ns/frame)\n"
+            << "  ArenaAllocator:  " << arena_ticks << " ticks ("
+            << per_op_ns(arena_ticks) << " ns/frame)\n";
+}
+
+void bench_arena_vector() {
+  constexpr std::size_t num_elements{1'000'000};
+  auto random_particles = make_particles_aos(num_elements, 34);
+
+  auto bench_vec_new = [&random_particles = random_particles]() {
+    std::vector<Particle> v_new;
+    // v_new.reserve(num_elements);
+    for (auto &i : random_particles) {
+      v_new.push_back(i);
+    }
+    return v_new.size();
+  };
+
+  auto my_pow = [](this auto &&self, double base, double exp) constexpr {
+    if (exp == 0.0)
+      return 1.0;
+    return base * self(base, exp - 1.0);
+  };
+  // push_back doubles the capacity: 1, 2, 4, ... up to 2^20 (the first power
+  // of two >= num_elements). deallocate() is a no-op, so the arena must hold
+  // the sum of every growth buffer: 2^0 + ... + 2^20 = 2^21 - 1 elements.
+  constexpr auto vec_arena_size =
+      static_cast<std::size_t>(my_pow(2.0, 21.0));
+
+  auto arena_alloc = ArenaAllocator<Particle, vec_arena_size>();
+
+  auto bench_vec_arena = [&random_particles = random_particles,
+                          &arena = arena_alloc]() {
+    std::vector<Particle, ArenaAllocator<Particle, vec_arena_size>> v_new(
+        arena);
+    // v_new.reserve(num_elements);
+
+    for (auto &i : random_particles) {
+      v_new.push_back(i);
+    }
+    return v_new.size();
+  };
+
+  auto [res_new, time_new] = bench::il_benchmark(bench_vec_new);
+  auto [res_arena, time_arena] = bench::il_benchmark(bench_vec_arena);
+
+  std::cout << "Bench arena vector:\n"
+            << "\nres_new: " << res_new << "\t time_new: " << time_new
+            << "\nres_arena: " << res_arena << "\t time_arena: " << time_arena
+            << std::endl;
+}
+
 int main() {
   constexpr auto NUM_PARTICLES_SMALL = 1'000;
   constexpr auto NUM_PARTICLES_MEDIUM = 10'000;
@@ -265,6 +409,10 @@ int main() {
 
   std::cout << "update_particle_soa: " << soa_ticks_xlarge
             << " ticks (size=" << soa_res_xlarge << ")\n";
+
+  bench_arena_allocator();
+  bench_arena_allocator_hotpath();
+  bench_arena_vector();
 
   auto queue = SPSCQueue<float, 1024>{};
   auto push_fun = [&queue = queue]() -> std::size_t {
