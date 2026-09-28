@@ -2,6 +2,7 @@
 #include "include/ArenaAllocator.h"
 #include "include/Particle.h"
 #include "include/SPSCQueue.h"
+#include "include/fixed_point.h"
 
 #include <algorithm>
 #include <cmath>
@@ -276,8 +277,7 @@ void bench_arena_vector() {
   // push_back doubles the capacity: 1, 2, 4, ... up to 2^20 (the first power
   // of two >= num_elements). deallocate() is a no-op, so the arena must hold
   // the sum of every growth buffer: 2^0 + ... + 2^20 = 2^21 - 1 elements.
-  constexpr auto vec_arena_size =
-      static_cast<std::size_t>(my_pow(2.0, 21.0));
+  constexpr auto vec_arena_size = static_cast<std::size_t>(my_pow(2.0, 21.0));
 
   auto arena_alloc = ArenaAllocator<Particle, vec_arena_size>();
 
@@ -300,6 +300,75 @@ void bench_arena_vector() {
             << "\nres_new: " << res_new << "\t time_new: " << time_new
             << "\nres_arena: " << res_arena << "\t time_arena: " << time_arena
             << std::endl;
+}
+
+// 1M subtract-accumulate operations (acc += a[i] - b[i]) in three formats:
+//   - double                 : scalar FADD chain (no reassociation without
+//                              fast-math, so the compiler cannot vectorize)
+//   - FixedPoint<int64_t, 8> : integer pipeline under the hood
+//   - int64_t raw            : the fixed-point raw values with no wrapper;
+//                              must match FixedPoint tick-for-tick (zero-cost
+//                              abstraction check)
+// All formats hold the same logical values (fixed seed, generated at runtime
+// so nothing can be constant-folded). Each timed iteration is one pass over
+// the 1M-element arrays; the accumulator is returned and sunk by keep().
+void bench_fixed_point_vs_double() {
+  using Fix = FixedPoint<std::int64_t, 8>;
+  constexpr std::size_t kOps = 1'000;
+  constexpr std::size_t kIters = 10;
+  spin_warmup();
+
+  std::mt19937_64 rng(kGenSeed);
+  std::uniform_real_distribution<double> dist{-1000.0, 1000.0};
+  std::vector<double> da(kOps), db(kOps);
+  std::vector<Fix> fa(kOps), fb(kOps);
+  std::vector<std::int64_t> ia(kOps), ib(kOps);
+  for (std::size_t i = 0; i < kOps; ++i) {
+    da[i] = dist(rng);
+    db[i] = dist(rng);
+    fa[i] = Fix(da[i]);
+    fb[i] = Fix(db[i]);
+    ia[i] = fa[i].raw(); // identical quantization as the FixedPoint arrays
+    ib[i] = fb[i].raw();
+  }
+
+  const auto dbl_ticks = bench::benchmark_N<kIters>([&] {
+    double acc = 0.0;
+    for (std::size_t i = 0; i < kOps; ++i) {
+      acc += da[i] - db[i];
+    }
+    return acc;
+  });
+
+  const auto fix_ticks = bench::benchmark_N<kIters>([&] {
+    auto acc = Fix(0);
+    for (std::size_t i = 0; i < kOps; ++i) {
+      acc = acc + (fa[i] - fb[i]);
+    }
+    return acc.raw();
+  });
+
+  const auto int_ticks = bench::benchmark_N<kIters>([&] {
+    std::int64_t acc = 0;
+    for (std::size_t i = 0; i < kOps; ++i) {
+      acc += ia[i] - ib[i];
+    }
+    return acc;
+  });
+
+  const auto freq = static_cast<double>(bench::timer_freq());
+  const auto ns_per_op = [freq](std::uint64_t ticks) {
+    return static_cast<double>(ticks) / kIters / freq * 1e9 / kOps;
+  };
+
+  std::cout << "subtract-accumulate, " << kOps << " ops/pass (" << kIters
+            << " iterations)\n"
+            << "  double:                 " << dbl_ticks << " ticks ("
+            << ns_per_op(dbl_ticks) << " ns/op)\n"
+            << "  FixedPoint<int64_t, 8>: " << fix_ticks << " ticks ("
+            << ns_per_op(fix_ticks) << " ns/op)\n"
+            << "  int64_t raw:            " << int_ticks << " ticks ("
+            << ns_per_op(int_ticks) << " ns/op)\n";
 }
 
 int main() {
@@ -413,6 +482,7 @@ int main() {
   bench_arena_allocator();
   bench_arena_allocator_hotpath();
   bench_arena_vector();
+  bench_fixed_point_vs_double();
 
   auto queue = SPSCQueue<float, 1024>{};
   auto push_fun = [&queue = queue]() -> std::size_t {
