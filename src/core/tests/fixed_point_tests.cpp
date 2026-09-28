@@ -23,11 +23,30 @@ static_assert(std::is_same_v<decltype(std::declval<const F4>() +
                                       std::declval<const F8>()),
                              F4>);
 
+// Mixed-precision subtraction yields the coarser scale (fewer fractional bits).
+static_assert(std::is_same_v<decltype(std::declval<const F8>() -
+                                      std::declval<const F8>()),
+                             F8>);
+static_assert(std::is_same_v<decltype(std::declval<const F8>() -
+                                      std::declval<const F4>()),
+                             F4>);
+static_assert(std::is_same_v<decltype(std::declval<const F4>() -
+                                      std::declval<const F8>()),
+                             F4>);
+
 // Construction and addition are usable in constant expressions.
 static_assert(static_cast<double>(F8(2) + F8(3)) == 5.0);
 static_assert(static_cast<double>(F8(2.5) + F8(1.25)) == 3.75);
 static_assert(static_cast<double>(F8(1.5) + F4(2.25)) == 3.75);
 static_assert(static_cast<double>(F4(2.25) + F8(1.5)) == 3.75);
+
+// Subtraction (including negative results) is usable in constant expressions.
+static_assert(static_cast<double>(F8(5) - F8(3)) == 2.0);
+static_assert(static_cast<double>(F8(2.5) - F8(1.25)) == 1.25);
+static_assert(static_cast<double>(F8(1.5) - F8(2.25)) == -0.75);
+static_assert(static_cast<double>(F8(-1.5) - F8(2.25)) == -3.75);
+static_assert(static_cast<double>(F8(1.5) - F4(2.25)) == -0.75);
+static_assert(static_cast<double>(F4(2.25) - F8(1.5)) == 0.75);
 
 TEST(FixedPointMathCreation, CreateFromIntegral) {
   constexpr std::size_t FLOAT_BITS = 8;
@@ -85,4 +104,39 @@ TEST(FixedPointMathAddition, MixedPrecisionTruncatesFinerOperand) {
   // Arithmetic right shift rounds negative values toward -inf.
   const F8 neg_fine(-1.99609375);
   EXPECT_DOUBLE_EQ(static_cast<double>(zero + neg_fine), -2.0);
+}
+
+TEST(FixedPointMathSubtraction, SamePrecisionConstOperands) {
+  const F8 a(2.25);
+  const F8 b(1.5);
+  const auto diff = a - b;
+  EXPECT_DOUBLE_EQ(static_cast<double>(diff), 0.75);
+}
+
+TEST(FixedPointMathSubtraction, NegativeResultAndOperands) {
+  // Two's complement handles the signs: no special-casing required.
+  const F8 a(1.5);
+  const F8 b(2.25);
+  EXPECT_DOUBLE_EQ(static_cast<double>(a - b), -0.75);
+  const F8 neg_a(-1.5);
+  EXPECT_DOUBLE_EQ(static_cast<double>(neg_a - b), -3.75);
+  EXPECT_DOUBLE_EQ(static_cast<double>(b - neg_a), 3.75);
+}
+
+TEST(FixedPointMathSubtraction, MixedPrecisionBothOrders) {
+  const F8 fine(2.25);
+  const F4 coarse(1.5);
+  EXPECT_DOUBLE_EQ(static_cast<double>(fine - coarse), 0.75);
+  EXPECT_DOUBLE_EQ(static_cast<double>(coarse - fine), -0.75);
+}
+
+TEST(FixedPointMathSubtraction, MixedPrecisionTruncatesFinerOperand) {
+  // Same truncation policy as addition. 1.99609375 (raw 511 at scale 8)
+  // loses 4 bits: 0 - (511 >> 4) = -31 at scale 4.
+  const F8 fine(1.99609375);
+  const F4 zero(0);
+  EXPECT_DOUBLE_EQ(static_cast<double>(zero - fine), -1.9375);
+  // Arithmetic right shift rounds toward -inf: -511 >> 4 == -32.
+  const F8 neg_fine(-1.99609375);
+  EXPECT_DOUBLE_EQ(static_cast<double>(zero - neg_fine), 2.0);
 }

@@ -1,3 +1,7 @@
+/*
+ * Fixed Point Math with no overflowing guarantees. Supporting basic operations
+ * (+ - * /)
+ */
 #ifndef FIXED_POINT_H
 #define FIXED_POINT_H
 
@@ -63,6 +67,31 @@ template <typename BaseType, std::size_t FractionalBits> struct FixedPoint {
     } else {
       auto shift_bits = FractionalBits - OtherFractionalBits;
       auto new_raw = (raw_ >> (shift_bits)) + other.raw_;
+      return FixedPoint<BaseType, OtherFractionalBits>::from_raw(new_raw);
+    }
+  };
+
+  constexpr auto
+  operator-(const FixedPoint<BaseType, FractionalBits> &other) const {
+    auto f = from_raw(raw_ - other.raw_);
+    return f;
+  }
+
+  /*
+   * Basic behavior of subtraction of instances with differing precision ->
+   * take min precision. The finer operand is truncated via arithmetic right
+   * shift (rounds negative values toward -inf), same as operator+.
+   */
+  template <std::size_t OtherFractionalBits>
+  constexpr auto
+  operator-(const FixedPoint<BaseType, OtherFractionalBits> &other) const {
+    if constexpr (FractionalBits < OtherFractionalBits) {
+      auto new_raw =
+          raw_ - (other.raw_ >> (OtherFractionalBits - FractionalBits));
+      return from_raw(new_raw);
+    } else {
+      auto shift_bits = FractionalBits - OtherFractionalBits;
+      auto new_raw = (raw_ >> (shift_bits)) - other.raw_;
       return FixedPoint<BaseType, OtherFractionalBits>::from_raw(new_raw);
     }
   };
