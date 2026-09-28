@@ -2,6 +2,8 @@
  * Fixed Point Math with no overflowing guarantees. Supporting basic operations
  * (+ - * /)
  */
+
+// TODO (al) operator * / implement
 #ifndef FIXED_POINT_H
 #define FIXED_POINT_H
 
@@ -98,8 +100,6 @@ template <typename BaseType, std::size_t FractionalBits> struct FixedPoint {
 
 private:
   BaseType raw_{};
-
-  // operator + - * /
 };
 
 #endif // FIXED_POINT_H
