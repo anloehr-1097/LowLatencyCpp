@@ -13,7 +13,23 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()
 
-add_compile_options(-Wall -Wextra -Wpedantic)
+# Stricter warnings applied per-target to first-party code only, so
+# third-party code (GTest sources, etc.) is never poisoned by -Werror.
+function(llcm_strict_warnings target)
+  target_compile_options(${target} PRIVATE
+    -Wall
+    -Wextra
+    -Wpedantic
+    -Wconversion
+    -Wshadow
+    -Wnon-virtual-dtor
+    -Wold-style-cast
+    -Wcast-align
+    -Woverloaded-virtual
+    -Wnull-dereference
+    -Werror
+  )
+endfunction()
 
 # --- bench library -----------------------------------------------------
 # Header-only (all templates / always_inline): an INTERFACE target carries the
@@ -24,6 +40,7 @@ target_include_directories(il_benchmark INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/be
 # --- bench executable -----------------------------------------------------
 add_executable(bench bench/main.cpp)
 target_link_libraries(bench PRIVATE il_benchmark)
+llcm_strict_warnings(bench)
 
 # --- core library ------------------------------------------------------
 add_library(core
@@ -33,10 +50,12 @@ add_library(core
 )
 target_include_directories(core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src/core/include)
 target_link_libraries(core PUBLIC il_benchmark)
+llcm_strict_warnings(core)
 
 # --- core executable ------------------------------------------------------
 add_executable(core_run src/core/main.cpp)
 target_link_libraries(core_run PRIVATE core)
+llcm_strict_warnings(core_run)
 
 # --- tests ----------------------------------------------------------------
 option(LLCM_BUILD_TESTS "Build unit tests" ON)
@@ -56,6 +75,7 @@ if(LLCM_BUILD_TESTS)
           arena_allocator_test fixed_point_tests)
     add_executable(${test_name} src/core/tests/${test_name}.cpp)
     target_link_libraries(${test_name} PRIVATE core GTest::gtest_main)
+    llcm_strict_warnings(${test_name})
     add_test(NAME ${test_name} COMMAND ${test_name})
   endforeach()
 endif()

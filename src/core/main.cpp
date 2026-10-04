@@ -103,8 +103,8 @@ void queue_correctness_test() {
   constexpr std::size_t kCap = 1024;
   auto queue = SPSCQueue<float, kCap>{};
   auto push_fun = [&queue = queue]() -> std::size_t {
-    for (const float i : std::ranges::iota_view(std::size_t{0}, kCap)) {
-      queue.push(i);
+    for (auto i : std::ranges::iota_view(std::size_t{0}, kCap)) {
+      queue.push(static_cast<float>(i));
     }
     return queue.num_elements();
   };
@@ -133,8 +133,8 @@ void queue_correctness_test_concurrent() {
   constexpr std::size_t kCap = 1024;
   auto queue = SPSCQueue<float, kCap>{};
   auto push_fun = [&queue = queue]() -> std::size_t {
-    for (const float i : std::ranges::iota_view(std::size_t{0}, kCap)) {
-      queue.push(i);
+    for (auto i : std::ranges::iota_view(std::size_t{0}, kCap)) {
+      queue.push(static_cast<float>(i));
     }
     return queue.num_elements();
   };
@@ -169,7 +169,7 @@ void spin_warmup() {
   const auto freq = bench::timer_freq();
   const auto t0 = bench::timer_start();
   while (bench::timer_start() - t0 < freq / 5) {
-    ++sink;
+    sink = sink + 1;
   }
 }
 
@@ -486,14 +486,14 @@ int main() {
 
   auto queue = SPSCQueue<float, 1024>{};
   auto push_fun = [&queue = queue]() -> std::size_t {
-    for (const float i : std::ranges::iota_view(0, NUM_PARTICLES_MEDIUM)) {
-      queue.push(i);
+    for (auto i : std::ranges::iota_view(0, NUM_PARTICLES_MEDIUM)) {
+      queue.push(static_cast<float>(i));
     }
     return queue.num_elements();
   };
   auto pop_fun = [&queue = queue]() -> std::size_t {
     float f;
-    for ([[maybe_unused]] const auto i :
+    for ([[maybe_unused]] int i :
          std::ranges::iota_view(0, NUM_PARTICLES_MEDIUM)) {
       queue.pop(f);
     }

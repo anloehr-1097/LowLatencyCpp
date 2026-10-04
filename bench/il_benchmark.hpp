@@ -241,7 +241,10 @@ template <std::size_t N> auto p(std::vector<uint64_t> &vec) {
   }
   std::sort(vec.begin(), vec.end());
 
-  auto index = static_cast<uint64_t>(std::ceil(vec.size() * N / 100.0)) - 1;
+  auto index =
+      static_cast<uint64_t>(std::ceil(static_cast<double>(vec.size()) *
+                                      static_cast<double>(N) / 100.0)) -
+      1;
   return vec.at(index);
 }
 
@@ -259,12 +262,14 @@ inline auto standard_dev(const std::vector<uint64_t> &vec)
               << vec.size() << std::endl;
     return {0.0, 0.0};
   }
-  const auto avg =
-      std::accumulate(vec.begin(), vec.end(), 0.0, std::plus()) / vec.size();
+  const auto avg = std::accumulate(vec.begin(), vec.end(), 0.0,
+                                   std::plus()) /
+                   static_cast<double>(vec.size());
   const auto variance =
       std::accumulate(vec.begin(), vec.end(), 0.0,
-                      [avg = avg](const auto &a, const auto &b) {
-                        return a + (b - avg) * (b - avg);
+                      [avg = avg](const double a, const uint64_t b) {
+                        return a + (static_cast<double>(b) - avg) *
+                                       (static_cast<double>(b) - avg);
                       }) /
       static_cast<double>(vec.size() - 1);
   return {avg, std::sqrt(variance)};

@@ -25,7 +25,11 @@ template <typename BaseType, std::size_t FractionalBits> struct FixedPoint {
                                  static_cast<T>(BaseType{1} << FractionalBits));
   }
 
-  constexpr FixedPoint(BaseType x) { raw_ = x << FractionalBits; };
+  constexpr FixedPoint(BaseType x) {
+    raw_ = static_cast<BaseType>(
+        static_cast<std::common_type_t<BaseType, long long>>(x)
+        << FractionalBits);
+  };
   FixedPoint() = default;
   static constexpr FixedPoint<BaseType, FractionalBits> from_raw(BaseType x) {
     auto f = FixedPoint();
@@ -97,6 +101,10 @@ template <typename BaseType, std::size_t FractionalBits> struct FixedPoint {
       return FixedPoint<BaseType, OtherFractionalBits>::from_raw(new_raw);
     }
   };
+
+  constexpr auto
+  operator*([[maybe_unused]] const FixedPoint<BaseType, FractionalBits> &other)
+      const {}
 
 private:
   BaseType raw_{};
