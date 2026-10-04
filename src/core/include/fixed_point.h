@@ -8,6 +8,7 @@
 #define FIXED_POINT_H
 
 #include <cstddef>
+#include <cstdint>
 #include <type_traits>
 
 template <typename T>
@@ -103,8 +104,33 @@ template <typename BaseType, std::size_t FractionalBits> struct FixedPoint {
   };
 
   constexpr auto
-  operator*([[maybe_unused]] const FixedPoint<BaseType, FractionalBits> &other)
-      const {}
+  operator*(const FixedPoint<BaseType, FractionalBits> &other) const {
+    // prevent overflow by casting to wider type
+    auto intermediate = static_cast<std::int64_t>(raw()) * other.raw();
+    auto same_precision = static_cast<BaseType>(intermediate >> FractionalBits);
+    return from_raw(same_precision);
+  }
+
+  /*
+   * Basic behavior of multiplication of instances with differing precision ->
+   * take min precision. The finer operand is truncated via arithmetic right
+   * shift before multiplying, same as operator+.
+   */
+  template <std::size_t OtherFractionalBits>
+  constexpr auto
+  operator*(const FixedPoint<BaseType, OtherFractionalBits> &other) const {
+    if constexpr (FractionalBits < OtherFractionalBits) {
+      auto new_raw = other.raw_ >> (OtherFractionalBits - FractionalBits);
+      auto intermediate = static_cast<std::int64_t>(raw_) * new_raw;
+      return from_raw(static_cast<BaseType>(intermediate >> FractionalBits));
+    } else {
+      auto shift_bits = FractionalBits - OtherFractionalBits;
+      auto new_raw = (raw_ >> (shift_bits));
+      auto intermediate = static_cast<std::int64_t>(new_raw) * other.raw_;
+      return FixedPoint<BaseType, OtherFractionalBits>::from_raw(
+          static_cast<BaseType>(intermediate >> OtherFractionalBits));
+    }
+  };
 
 private:
   BaseType raw_{};

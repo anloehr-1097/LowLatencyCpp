@@ -11,28 +11,28 @@ using F8 = FixedPoint<std::int32_t, 8>;
 
 // const operands must yield a FixedPoint, not decay to double via the
 // implicit conversion operator.
-static_assert(std::is_same_v<decltype(std::declval<const F8>() +
-                                      std::declval<const F8>()),
-                             F8>);
+static_assert(
+    std::is_same_v<
+        decltype(std::declval<const F8>() + std::declval<const F8>()), F8>);
 
 // Mixed-precision addition yields the coarser scale (fewer fractional bits).
-static_assert(std::is_same_v<decltype(std::declval<const F8>() +
-                                      std::declval<const F4>()),
-                             F4>);
-static_assert(std::is_same_v<decltype(std::declval<const F4>() +
-                                      std::declval<const F8>()),
-                             F4>);
+static_assert(
+    std::is_same_v<
+        decltype(std::declval<const F8>() + std::declval<const F4>()), F4>);
+static_assert(
+    std::is_same_v<
+        decltype(std::declval<const F4>() + std::declval<const F8>()), F4>);
 
 // Mixed-precision subtraction yields the coarser scale (fewer fractional bits).
-static_assert(std::is_same_v<decltype(std::declval<const F8>() -
-                                      std::declval<const F8>()),
-                             F8>);
-static_assert(std::is_same_v<decltype(std::declval<const F8>() -
-                                      std::declval<const F4>()),
-                             F4>);
-static_assert(std::is_same_v<decltype(std::declval<const F4>() -
-                                      std::declval<const F8>()),
-                             F4>);
+static_assert(
+    std::is_same_v<
+        decltype(std::declval<const F8>() - std::declval<const F8>()), F8>);
+static_assert(
+    std::is_same_v<
+        decltype(std::declval<const F8>() - std::declval<const F4>()), F4>);
+static_assert(
+    std::is_same_v<
+        decltype(std::declval<const F4>() - std::declval<const F8>()), F4>);
 
 // Construction and addition are usable in constant expressions.
 static_assert(static_cast<double>(F8(2) + F8(3)) == 5.0);
@@ -139,4 +139,12 @@ TEST(FixedPointMathSubtraction, MixedPrecisionTruncatesFinerOperand) {
   // Arithmetic right shift rounds toward -inf: -511 >> 4 == -32.
   const F8 neg_fine(-1.99609375);
   EXPECT_DOUBLE_EQ(static_cast<double>(zero - neg_fine), 2.0);
+}
+
+TEST(FixedPointMathMultiplication, SamePrecisionMultiplication) {
+  const F8 op1(2.5);
+  const F8 op2(2.5);
+  const F8 op_res(6.25);
+  auto res = op1 * op2;
+  EXPECT_EQ(res, op_res);
 }
