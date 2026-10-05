@@ -16,7 +16,7 @@ public:
   void *mem = nullptr;
 
   // Ctor. Allocate one large block of memory on the heap.
-  Arena<ArenaSize>() {
+  Arena() {
     auto ptr = malloc(ArenaSize);
     if (ptr != nullptr) {
       mem = ptr;

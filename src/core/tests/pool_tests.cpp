@@ -38,6 +38,8 @@ void operator delete(void *p) noexcept {
   }
 }
 
+void operator delete(void *p, std::size_t) noexcept { operator delete(p); }
+
 void *operator new[](std::size_t size) {
   ++g_alloc_count;
   void *p = std::malloc(size);
@@ -51,6 +53,21 @@ void operator delete[](void *p) noexcept {
     ++g_free_count;
     std::free(p);
   }
+}
+
+void operator delete[](void *p, std::size_t) noexcept { operator delete[](p); }
+
+// The nothrow forms must be replaced too: otherwise memory obtained from the
+// library's (or the sanitizer's) nothrow new would be released by the
+// std::free in our operator delete.
+void *operator new(std::size_t size, const std::nothrow_t &) noexcept {
+  ++g_alloc_count;
+  return std::malloc(size);
+}
+
+void *operator new[](std::size_t size, const std::nothrow_t &) noexcept {
+  ++g_alloc_count;
+  return std::malloc(size);
 }
 
 namespace {
@@ -77,7 +94,7 @@ struct Tracked {
 
   int id;
 
-  explicit Tracked(int id) : id(id) {
+  explicit Tracked(int id_) : id(id_) {
     ++alive;
     ++constructed;
   }
@@ -121,11 +138,11 @@ TEST(PoolTest, AutomaticReturnOnScopeExitDestroysAndRecycles) {
   reset_tracked();
   SmallTrackedPool pool; // pool outlives all handles in this test
   {
-    auto h1 = pool.allocate();
-    new (h1.get()) Tracked(1);
+    auto h1 = pool.allocate(1);
+    ASSERT_NE(h1, nullptr);
     {
-      auto h2 = pool.allocate();
-      new (h2.get()) Tracked(2);
+      auto h2 = pool.allocate(2);
+      ASSERT_NE(h2, nullptr);
       EXPECT_EQ(Tracked::alive, 2);
     } // h2 goes out of scope -> ~Tracked(), slot recycled
     EXPECT_EQ(Tracked::alive, 1);
@@ -156,8 +173,9 @@ TEST(PoolTest, ExplicitDeallocateRunsDestroyerExactlyOnce) {
   reset_tracked();
   SmallTrackedPool pool;
   {
-    auto h = pool.allocate();
-    new (h.get()) Tracked(7);
+    auto h = pool.allocate(7);
+    ASSERT_NE(h, nullptr);
+    EXPECT_EQ(h->id, 7);
     EXPECT_EQ(Tracked::alive, 1);
   } // goes out of scope here, not via explicit deallocate
   EXPECT_EQ(Tracked::alive, 0);
@@ -166,9 +184,8 @@ TEST(PoolTest, ExplicitDeallocateRunsDestroyerExactlyOnce) {
 
 TEST(PoolTest, ConstructIntoProvidedMemory) {
   StringPool pool;
-  auto h = pool.allocate();
+  auto h = pool.allocate("pool memory");
   ASSERT_NE(h, nullptr);
-  new (h.get()) std::string("pool memory");
   EXPECT_EQ(*h, "pool memory");
   EXPECT_EQ(h->size(), 11u);
 

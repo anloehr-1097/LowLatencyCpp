@@ -60,18 +60,23 @@ public:
   }
 
   /*
-   * Allocate raw slot memory and hand it to the caller as an owning handle.
-   * The caller constructs the T into this memory. Returns nullptr handle when
-   * the pool is exhausted.
+   * Take a slot off the free list, construct a T in it from the forwarded
+   * arguments and hand it to the caller as an owning handle. Returns nullptr
+   * handle when the pool is exhausted.
    */
-  Handle allocate() {
+  template <typename... Args> Handle allocate(Args &&...args) {
     if (!free_head)
       return nullptr;
 
     auto *slot = free_head;
-    free_head = slot->next;
+    // Constructing the T overwrites slot->next, so read it first. The free
+    // list is only updated afterwards: if T's ctor throws, the slot is still
+    // on the list and nothing leaks.
+    auto *next = slot->next;
+    T *ptr = ::new (static_cast<void *>(slot->storage))
+        T(std::forward<Args>(args)...);
+    free_head = next;
     ++in_use_count;
-    auto *ptr = std::launder(reinterpret_cast<T *>(slot));
     return Handle(ptr, PoolReleaser<T, N>{this});
   }
 
