@@ -31,6 +31,31 @@ function(llcm_strict_warnings target)
   )
 endfunction()
 
+# --- sanitizers -----------------------------------------------------------
+# ASan + UBSan for Debug builds (the typical dev config). On by default;
+# disable with -DLLCM_ENABLE_SANITIZERS=OFF. LSan is unsupported on macOS
+# and TSan is mutually exclusive with ASan, hence address+undefined only.
+option(LLCM_ENABLE_SANITIZERS "Enable ASan/UBSan in Debug builds" ON)
+
+function(llcm_enable_sanitizers target)
+  if(NOT LLCM_ENABLE_SANITIZERS)
+    return()
+  endif()
+  if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+    return()
+  endif()
+  if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+    return()
+  endif()
+  target_compile_options(${target} PRIVATE
+    -fsanitize=address,undefined
+    -fno-omit-frame-pointer
+  )
+  target_link_options(${target} PRIVATE
+    -fsanitize=address,undefined
+  )
+endfunction()
+
 # --- bench library -----------------------------------------------------
 # Header-only (all templates / always_inline): an INTERFACE target carries the
 # include path and usage requirements without producing an archive.
@@ -41,6 +66,7 @@ target_include_directories(il_benchmark INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/be
 add_executable(bench bench/main.cpp)
 target_link_libraries(bench PRIVATE il_benchmark)
 llcm_strict_warnings(bench)
+llcm_enable_sanitizers(bench)
 
 # --- core library ------------------------------------------------------
 add_library(core
@@ -51,11 +77,13 @@ add_library(core
 target_include_directories(core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src/core/include)
 target_link_libraries(core PUBLIC il_benchmark)
 llcm_strict_warnings(core)
+llcm_enable_sanitizers(core)
 
 # --- core executable ------------------------------------------------------
 add_executable(core_run src/core/main.cpp)
 target_link_libraries(core_run PRIVATE core)
 llcm_strict_warnings(core_run)
+llcm_enable_sanitizers(core_run)
 
 # --- tests ----------------------------------------------------------------
 option(LLCM_BUILD_TESTS "Build unit tests" ON)
@@ -76,6 +104,7 @@ if(LLCM_BUILD_TESTS)
     add_executable(${test_name} src/core/tests/${test_name}.cpp)
     target_link_libraries(${test_name} PRIVATE core GTest::gtest_main)
     llcm_strict_warnings(${test_name})
+    llcm_enable_sanitizers(${test_name})
     add_test(NAME ${test_name} COMMAND ${test_name})
   endforeach()
 endif()
