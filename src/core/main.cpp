@@ -3,6 +3,7 @@
 #include "include/Particle.h"
 #include "include/SPSCQueue.h"
 #include "include/fixed_point.h"
+#include "include/linalg.h"
 
 #include <algorithm>
 #include <cmath>
@@ -517,5 +518,7 @@ int main() {
   std::cout << "Push num elements: " << std::get<0>(res)
             << "\tPop num elements: " << std::get<1>(res) << std::endl;
   std::cout << "Time spent: " << meas_time << std::endl;
+
+  std::cout << "SIMD Backend: " << TSIMD_BACKEND_NAME << std::endl;
   return 0;
 }

@@ -56,6 +56,23 @@ function(llcm_enable_sanitizers target)
   )
 endfunction()
 
+# --- native architecture flags ------------------------------------------
+# Compile first-party code for the build host's ISA (AVX2/AVX-512 on Intel,
+# NEON on Apple Silicon / ARM Linux). Prefers -mcpu=native on ARM, where
+# GCC/Clang favor it; -march=native elsewhere. Unsupported flags are probed
+# and skipped, so untested compilers (MSVC, etc.) fall back to the baseline.
+include(CheckCXXCompilerFlag)
+check_cxx_compiler_flag("-mcpu=native" LLCM_HAS_MCPU_NATIVE)
+check_cxx_compiler_flag("-march=native" LLCM_HAS_MARCH_NATIVE)
+
+function(llcm_native_arch target)
+  if(LLCM_HAS_MCPU_NATIVE AND CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
+    target_compile_options(${target} PRIVATE -mcpu=native)
+  elseif(LLCM_HAS_MARCH_NATIVE)
+    target_compile_options(${target} PRIVATE -march=native)
+  endif()
+endfunction()
+
 # --- bench library -----------------------------------------------------
 # Header-only (all templates / always_inline): an INTERFACE target carries the
 # include path and usage requirements without producing an archive.
@@ -67,23 +84,27 @@ add_executable(bench bench/main.cpp)
 target_link_libraries(bench PRIVATE il_benchmark)
 llcm_strict_warnings(bench)
 llcm_enable_sanitizers(bench)
+llcm_native_arch(bench)
 
 # --- core library ------------------------------------------------------
 add_library(core
   src/core/Particle.cpp
   src/core/SPSCQueue.cpp
   src/core/Arena.cpp
+  src/core/linalg.cpp
 )
 target_include_directories(core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src/core/include)
 target_link_libraries(core PUBLIC il_benchmark)
 llcm_strict_warnings(core)
 llcm_enable_sanitizers(core)
+llcm_native_arch(core)
 
 # --- core executable ------------------------------------------------------
 add_executable(core_run src/core/main.cpp)
 target_link_libraries(core_run PRIVATE core)
 llcm_strict_warnings(core_run)
 llcm_enable_sanitizers(core_run)
+llcm_native_arch(core_run)
 
 # --- tests ----------------------------------------------------------------
 option(LLCM_BUILD_TESTS "Build unit tests" ON)
@@ -100,11 +121,12 @@ if(LLCM_BUILD_TESTS)
   enable_testing()
 
   foreach(test_name particle_tests spsc_queue_tests arena_tests pool_tests 
-          arena_allocator_test fixed_point_tests)
+          arena_allocator_test fixed_point_tests linalg_tests )
     add_executable(${test_name} src/core/tests/${test_name}.cpp)
     target_link_libraries(${test_name} PRIVATE core GTest::gtest_main)
     llcm_strict_warnings(${test_name})
     llcm_enable_sanitizers(${test_name})
+    llcm_native_arch(${test_name})
     add_test(NAME ${test_name} COMMAND ${test_name})
   endforeach()
 endif()
