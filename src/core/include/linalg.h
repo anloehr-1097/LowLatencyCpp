@@ -40,12 +40,12 @@ template <typename T, std::size_t N> struct VectNd {
 // Scalar reference implementations. The tight loops auto-vectorize under
 // -march=native / -mcpu=native for whichever TSIMD backend is selected.
 
-template <std::size_t N>
-constexpr VectNd<float, N> operator+(const VectNd<float, N> &lhs,
-                                     const VectNd<float, N> &rhs) {
-  VectNd<float, N> out;
+template <typename T, std::size_t N>
+constexpr VectNd<T, N> operator+(const VectNd<T, N> &lhs,
+                                 const VectNd<T, N> &rhs) {
+  VectNd<T, N> out;
   std::size_t i = 0;
-  for (; i + simd::width <= N; i += simd::width) {
+  for (; i + simd::vec_traits<T>::width <= N; i += simd::vec_traits<T>::width) {
     simd::store(out.data + i,
                 simd::add(simd::load(lhs.data + i), simd::load(rhs.data + i)));
   }
