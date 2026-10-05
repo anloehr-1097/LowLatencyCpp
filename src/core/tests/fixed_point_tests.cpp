@@ -34,6 +34,17 @@ static_assert(
     std::is_same_v<
         decltype(std::declval<const F4>() - std::declval<const F8>()), F4>);
 
+// Mixed-precision division yields the coarser scale (fewer fractional bits).
+static_assert(
+    std::is_same_v<
+        decltype(std::declval<const F8>() / std::declval<const F8>()), F8>);
+static_assert(
+    std::is_same_v<
+        decltype(std::declval<const F8>() / std::declval<const F4>()), F4>);
+static_assert(
+    std::is_same_v<
+        decltype(std::declval<const F4>() / std::declval<const F8>()), F4>);
+
 // Construction and addition are usable in constant expressions.
 static_assert(static_cast<double>(F8(2) + F8(3)) == 5.0);
 static_assert(static_cast<double>(F8(2.5) + F8(1.25)) == 3.75);
@@ -147,4 +158,36 @@ TEST(FixedPointMathMultiplication, SamePrecisionMultiplication) {
   const F8 op_res(6.25);
   auto res = op1 * op2;
   EXPECT_EQ(res, op_res);
+}
+
+TEST(FixedPointMathDivision, SamePrecisionDivision) {
+  const F8 op1(7.5);
+  const F8 op2(2.5);
+  const F8 op_res(3.0);
+  auto res = op1 / op2;
+  EXPECT_EQ(res, op_res);
+}
+
+TEST(FixedPointMathDivision, NegativeResultAndOperands) {
+  const F8 a(7.5);
+  const F8 b(2.5);
+  EXPECT_DOUBLE_EQ(static_cast<double>(a / b), 3.0);
+  const F8 neg_a(-7.5);
+  EXPECT_DOUBLE_EQ(static_cast<double>(neg_a / b), -3.0);
+  EXPECT_DOUBLE_EQ(static_cast<double>(a / (b - F8(5))), -3.0);
+}
+
+TEST(FixedPointMathDivision, MixedPrecisionBothOrders) {
+  const F8 fine(3.0);
+  const F4 coarse(1.5);
+  EXPECT_DOUBLE_EQ(static_cast<double>(fine / coarse), 2.0);
+  EXPECT_DOUBLE_EQ(static_cast<double>(coarse / fine), 0.5);
+}
+
+TEST(FixedPointMathDivision, MixedPrecisionTruncatesFinerOperand) {
+  // Same truncation policy as multiplication. 1.99609375 (raw 511 at
+  // scale 8) loses 4 bits: (1 << 8 << 4 >> 4) / (511 >> 4) = 256 / 31.
+  const F8 fine(1.99609375);
+  const F4 one(1);
+  EXPECT_EQ(one / fine, F4::from_raw(256 / 31));
 }
